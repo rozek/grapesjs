@@ -1,7 +1,7 @@
 import { each, isEmpty, keys, result } from 'underscore';
 import { CanvasSpotBuiltInTypes } from '../../canvas/model/CanvasSpot';
 import FrameView from '../../canvas/view/FrameView';
-import { ExtractMethods, ObjectAny, View } from '../../common';
+import { DisableOptions, ExtractMethods, ObjectAny, View } from '../../common';
 import { GetSetRuleOptions } from '../../css_composer';
 import Editor from '../../editor';
 import EditorModel from '../../editor/model/Editor';
@@ -18,12 +18,12 @@ type ClbObj = ReturnType<ComponentView['_clbObj']>;
 
 export interface IComponentView extends ExtractMethods<ComponentView> {}
 
-export default class ComponentView extends View</**
+export default class ComponentView<TComp extends Component = Component> extends View</**
  * Keep this format to avoid errors in TS bundler */
 /** @ts-ignore */
-Component> {
+TComp> {
   /** @ts-ignore */
-  model!: Component;
+  model!: TComp;
 
   /** @ts-ignore */
   className() {
@@ -47,6 +47,10 @@ Component> {
   getChildrenSelector?: Function;
   getTemplate?: Function;
   scriptContainer?: HTMLElement;
+
+  preinitialize(opt: any = {}) {
+    this.opts = opt;
+  }
 
   initialize(opt: any = {}) {
     const model = this.model;
@@ -93,6 +97,11 @@ Component> {
     return this.opts.config.frameView;
   }
 
+  get createDoc() {
+    const doc = this.frameView?.getDoc() || document;
+    return this.opts.config?.useFrameDoc ? doc : document;
+  }
+
   __isDraggable() {
     const { model, config } = this;
     const { draggable } = model.attributes;
@@ -131,7 +140,7 @@ Component> {
   /**
    * Callback executed when the `disable` event is triggered on component
    */
-  onDisable() {}
+  onDisable(opts?: DisableOptions) {}
 
   remove() {
     super.remove();
@@ -211,7 +220,7 @@ Component> {
   importClasses() {
     const { em, model } = this;
     const sm = em.Selectors;
-    sm && model.classes.forEach(s => sm.add(s.get('name')));
+    sm && model.classes.forEach(s => sm.add(s.getName()));
   }
 
   /**
@@ -510,6 +519,10 @@ Component> {
     const collection = model.components();
     const view = this;
     this.$el.data({ model, collection, view });
+  }
+
+  _createElement(tagName: string): Node {
+    return this.createDoc.createElement(tagName);
   }
 
   /**

@@ -1,10 +1,12 @@
 import { isString, isUndefined } from 'underscore';
-import { Model, SetOptions } from '../../common';
+import { LocaleOptions, Model, SetOptions } from '../../common';
 import Component from '../../dom_components/model/Component';
 import Editor from '../../editor';
 import EditorModel from '../../editor/model/Editor';
 import TraitView from '../view/TraitView';
 import { isDef } from '../../utils/mixins';
+import Category, { CategoryProperties } from '../../abstract/ModuleCategory';
+import Traits from './Traits';
 
 /** @private */
 export interface TraitProperties {
@@ -18,13 +20,19 @@ export interface TraitProperties {
    * The name of the trait used as a key for the attribute/property.
    * By default, the name is used as attribute name or property in case `changeProp` in enabled.
    */
-  name: string;
+  name?: string;
 
   /**
    * Trait id, eg. `my-trait-id`.
    * If not specified, the `name` will be used as id.
    */
-  id?: string;
+  id?: string | number;
+
+  /**
+   * Trait category.
+   * @default ''
+   */
+  category?: string | CategoryProperties;
 
   /**
    * The trait label to show for the rendered trait.
@@ -59,8 +67,14 @@ export interface TraitProperties {
     trait: Trait;
     component: Component;
     partial: boolean;
+    options: TraitSetValueOptions;
     emitUpdate: () => void;
   }) => void;
+}
+
+interface TraitSetValueOptions {
+  partial?: boolean;
+  [key: string]: unknown;
 }
 
 type TraitOption = {
@@ -74,6 +88,7 @@ type TraitOption = {
  * @property {String} type Trait type, defines how the trait should rendered. Possible values: `text` (default), `number`, `select`, `checkbox`, `color`, `button`
  * @property {String} label The trait label to show for the rendered trait.
  * @property {String} name The name of the trait used as a key for the attribute/property. By default, the name is used as attribute name or property in case `changeProp` in enabled.
+ * @property {String} [category=''] Trait category.
  * @property {Boolean} changeProp If `true` the trait value is applied on component
  *
  */
@@ -93,6 +108,7 @@ export default class Trait extends Model<TraitProperties> {
       value: '',
       default: '',
       placeholder: '',
+      category: '',
       changeProp: false,
       options: [],
     };
@@ -108,14 +124,26 @@ export default class Trait extends Model<TraitProperties> {
     this.em = em;
   }
 
+  get parent() {
+    return this.collection as unknown as Traits;
+  }
+
+  get category(): Category | undefined {
+    const cat = this.get('category');
+    return cat instanceof Category ? cat : undefined;
+  }
+
   setTarget(target: Component) {
     if (target) {
-      const { name, changeProp, value: initValue } = this.attributes;
+      const { name, changeProp, value: initValue, getValue } = this.attributes;
       this.target = target;
       this.unset('target');
       const targetEvent = changeProp ? `change:${name}` : `change:attributes:${name}`;
       this.listenTo(target, targetEvent, this.targetUpdated);
-      const value = initValue || this.getValue();
+      const value =
+        initValue ||
+        // Avoid the risk of loops in case the trait has a custom getValue
+        (!getValue ? this.getValue() : undefined);
       !isUndefined(value) && this.set({ value }, { silent: true });
     }
   }
@@ -173,9 +201,9 @@ export default class Trait extends Model<TraitProperties> {
    * @param {Object} [opts={}] Options.
    * @param {Boolean} [opts.partial] If `true` the update won't be considered complete (not stored in UndoManager).
    */
-  setValue(value: any, opts: { partial?: boolean } = {}) {
+  setValue(value: any, opts: TraitSetValueOptions = {}) {
     const valueOpts: { avoidStore?: boolean } = {};
-    const setValue = this.get('setValue');
+    const { setValue } = this.attributes;
 
     if (setValue) {
       setValue({
@@ -184,6 +212,7 @@ export default class Trait extends Model<TraitProperties> {
         trait: this,
         component: this.target,
         partial: !!opts.partial,
+        options: opts,
         emitUpdate: () => this.targetUpdated(),
       });
       return;
@@ -241,13 +270,27 @@ export default class Trait extends Model<TraitProperties> {
    * @param {Boolean} [opts.locale=true] Use the locale string from i18n module
    * @returns {String} Option label
    */
-  getOptionLabel(id: string | TraitOption, opts: { locale?: boolean } = {}): string {
+  getOptionLabel(id: string | TraitOption, opts: LocaleOptions = {}): string {
     const { locale = true } = opts;
     const option = (isString(id) ? this.getOption(id) : id)!;
     const optId = this.getOptionId(option);
     const label = option.label || (option as any).name || optId;
     const propName = this.getName();
     return (locale && this.em?.t(`traitManager.traits.options.${propName}.${optId}`)) || label;
+  }
+
+  /**
+   * Get category label.
+   * @param {Object} [opts={}] Options.
+   * @param {Boolean} [opts.locale=true] Use the locale string from i18n module.
+   * @returns {String}
+   */
+  getCategoryLabel(opts: LocaleOptions = {}): string {
+    const { em, category } = this;
+    const { locale = true } = opts;
+    const catId = category?.getId();
+    const catLabel = category?.getLabel();
+    return (locale && em?.t(`traitManager.categories.${catId}`)) || catLabel || '';
   }
 
   props() {
@@ -260,6 +303,7 @@ export default class Trait extends Model<TraitProperties> {
     this.em?.trigger('trait:update', {
       trait: this,
       component: this.target,
+      value,
     });
   }
 

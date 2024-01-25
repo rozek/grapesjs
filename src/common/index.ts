@@ -9,6 +9,10 @@ export type SetOptions = Backbone.ModelSetOptions & { avoidStore?: boolean };
 
 export type AddOptions = Backbone.AddOptions & { temporary?: boolean };
 
+export type DisableOptions = { fromMove?: boolean };
+
+export type LocaleOptions = { locale?: boolean };
+
 export type RemoveOptions = Backbone.Silenceable;
 
 export type EventHandler = Backbone.EventHandler;
@@ -18,6 +22,8 @@ export type ObjectHash = Backbone.ObjectHash;
 export type ObjectAny = Record<string, any>;
 
 export type ObjectStrings = Record<string, string>;
+
+export type Nullable = undefined | null | false;
 
 // https://github.com/microsoft/TypeScript/issues/29729#issuecomment-1483854699
 export type LiteralUnion<T, U> = T | (U & NOOP);
@@ -79,3 +85,5 @@ export const DEFAULT_BOXRECT: BoxRect = {
   width: 0,
   height: 0,
 };
+
+export type PrevToNewIdMap = Record<string, string>;

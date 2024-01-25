@@ -25,6 +25,19 @@ type CallbackOptions = {
   resizer: Resizer;
 };
 
+interface ResizerUpdateTargetOptions {
+  store: boolean;
+  selectedHandler?: string;
+  resizer: Resizer;
+  config: ResizerOptions;
+}
+
+interface ResizerOnUpdateContainerOptions {
+  el: HTMLElement;
+  resizer: Resizer;
+  opts: ResizerOptions;
+}
+
 export interface ResizerOptions {
   /**
    * Function which returns custom X and Y coordinates of the mouse.
@@ -34,12 +47,12 @@ export interface ResizerOptions {
   /**
    * Indicates custom target updating strategy.
    */
-  updateTarget?: (el: HTMLElement, rect: RectDim, opts: any) => void;
+  updateTarget?: (el: HTMLElement, rect: RectDim, opts: ResizerUpdateTargetOptions) => void;
 
   /**
    * Function which gets HTMLElement as an arg and returns it relative position
    */
-  posFetcher?: (el: HTMLElement, opts: any) => BoundingRect;
+  posFetcher?: (el: HTMLElement, opts: ElementPosOpts) => BoundingRect;
 
   /**
    * Indicate if the resizer should keep the default ratio.
@@ -65,7 +78,7 @@ export interface ResizerOptions {
   /**
    * On container update callback.
    */
-  onUpdateContainer?: (opts: any) => void;
+  onUpdateContainer?: (opts: ResizerOnUpdateContainerOptions) => void;
 
   /**
    * Resize unit step.
@@ -573,8 +586,6 @@ export default class Resizer {
       const elStyle = el.style as Record<string, any>;
       elStyle[keyWidth!] = rect.w + unitWidth!;
       elStyle[keyHeight!] = rect.h + unitHeight!;
-      elStyle.top = rect.t + unitHeight!;
-      elStyle.left = rect.l + unitWidth!;
     }
 
     this.updateContainer();

@@ -2,8 +2,8 @@ import { isUndefined, isArray, contains, toArray, keys, bindAll } from 'undersco
 import Backbone from 'backbone';
 import $ from '../../utils/cash-dom';
 import Extender from '../../utils/extender';
-import { getModel, hasWin, isEmptyObj, wait } from '../../utils/mixins';
-import { AddOptions, Model } from '../../common';
+import { hasWin, isEmptyObj, wait } from '../../utils/mixins';
+import { AddOptions, Model, ObjectAny } from '../../common';
 import Selected from './Selected';
 import FrameView from '../../canvas/view/FrameView';
 import Editor from '..';
@@ -315,7 +315,7 @@ export default class EditorModel extends Model {
    */
   loadOnStart() {
     const { projectData, headless } = this.config;
-    const sm = this.get('StorageManager');
+    const sm = this.Storage;
 
     // In `onLoad`, the module will try to load the data from its configurations.
     this.toLoad.reverse().forEach(mdl => mdl.onLoad());
@@ -363,11 +363,14 @@ export default class EditorModel extends Model {
    * and there are unsaved changes
    * @private
    */
-  updateChanges() {
-    const stm = this.get('StorageManager');
+  updateChanges(m: any, v: any, opts: ObjectAny) {
+    const stm = this.Storage;
     const changes = this.getDirtyCount();
-    this.updateItr && clearTimeout(this.updateItr);
-    this.updateItr = setTimeout(() => this.trigger('update'));
+
+    if (!opts.isClear) {
+      this.updateItr && clearTimeout(this.updateItr);
+      this.updateItr = setTimeout(() => this.trigger('update'));
+    }
 
     if (this.config.noticeOnUnload) {
       window.onbeforeunload = changes ? () => true : null;
@@ -472,7 +475,7 @@ export default class EditorModel extends Model {
 
   /**
    * Select a component
-   * @param  {Component|HTMLElement} el Component to select
+   * @param  {Component} el Component to select
    * @param  {Object} [opts={}] Options, optional
    * @public
    */
@@ -480,19 +483,18 @@ export default class EditorModel extends Model {
     const { event } = opts;
     const ctrlKey = event && (event.ctrlKey || event.metaKey);
     const { shiftKey } = event || {};
-    const els = (isArray(el) ? el : [el]).map(el => getModel(el, $));
+    const models = (isArray(el) ? el : [el])
+      .map(cmp => cmp?.delegate?.select?.(cmp) || cmp)
+      .filter(Boolean) as Component[];
     const selected = this.getSelectedAll();
     const mltSel = this.getConfig().multipleSelection;
-    let added;
-
-    // If an array is passed remove all selected
-    // expect those yet to be selected
     const multiple = isArray(el);
-    multiple && this.removeSelected(selected.filter(s => !contains(els, s)));
 
-    els.forEach(el => {
-      let model = getModel(el, undefined);
+    if (multiple || !el) {
+      this.removeSelected(selected.filter(s => !contains(models, s)));
+    }
 
+    models.forEach(model => {
       if (model) {
         this.trigger('component:select:before', model, opts);
 
@@ -501,7 +503,7 @@ export default class EditorModel extends Model {
           if (opts.useValid) {
             let parent = model.parent();
             while (parent && !parent.get('selectable')) parent = parent.parent();
-            model = parent;
+            model = parent!;
           } else {
             return;
           }
@@ -512,7 +514,7 @@ export default class EditorModel extends Model {
       if (ctrlKey && mltSel) {
         return this.toggleSelected(model);
       } else if (shiftKey && mltSel) {
-        this.clearSelection(this.get('Canvas').getWindow());
+        this.clearSelection(this.Canvas.getWindow());
         const coll = model.collection;
         const index = model.index();
         let min: number | undefined, max: number | undefined;
@@ -551,19 +553,17 @@ export default class EditorModel extends Model {
 
       !multiple && this.removeSelected(selected.filter(s => s !== model));
       this.addSelected(model, opts);
-      added = model;
     });
   }
 
   /**
    * Add component to selection
-   * @param  {Component|HTMLElement} el Component to select
+   * @param  {Component|Array<Component>} component Component to select
    * @param  {Object} [opts={}] Options, optional
    * @public
    */
-  addSelected(el: Component | Component[], opts: any = {}) {
-    const model = getModel(el, $);
-    const models: Component[] = isArray(model) ? model : [model];
+  addSelected(component: Component | Component[], opts: any = {}) {
+    const models: Component[] = isArray(component) ? component : [component];
 
     models.forEach(model => {
       const { selected } = this;
@@ -591,12 +591,11 @@ export default class EditorModel extends Model {
 
   /**
    * Remove component from selection
-   * @param  {Component|HTMLElement} el Component to select
+   * @param  {Component|Array<Component>} component Component to select
    * @param  {Object} [opts={}] Options, optional
    * @public
    */
-  removeSelected(el: Component | Component[], opts = {}) {
-    const component = getModel(el, $);
+  removeSelected(component: Component | Component[], opts = {}) {
     this.selected.removeComponent(component, opts);
     const cmps: Component[] = isArray(component) ? component : [component];
     cmps.forEach(component =>
@@ -609,13 +608,12 @@ export default class EditorModel extends Model {
 
   /**
    * Toggle component selection
-   * @param  {Component|HTMLElement} el Component to select
+   * @param  {Component|Array<Component>} component Component to select
    * @param  {Object} [opts={}] Options, optional
    * @public
    */
-  toggleSelected(el: Component | Component[], opts: any = {}) {
-    const model = getModel(el, $);
-    const models = isArray(model) ? model : [model];
+  toggleSelected(component: Component | Component[], opts: any = {}) {
+    const models = isArray(component) ? component : [component];
 
     models.forEach(model => {
       if (this.selected.hasComponent(model)) {
@@ -628,7 +626,7 @@ export default class EditorModel extends Model {
 
   /**
    * Hover a component
-   * @param  {Component|HTMLElement} cmp Component to select
+   * @param  {Component|Array<Component>} cmp Component to select
    * @param  {Object} [opts={}] Options, optional
    * @private
    */
@@ -659,27 +657,23 @@ export default class EditorModel extends Model {
     }
 
     const ev = 'component:hover';
-    let model = getModel(cmp, undefined) as Component | undefined;
-
-    if (!model) return;
-
     opts.forceChange && upHovered();
-    this.trigger(`${ev}:before`, model, opts);
+    this.trigger(`${ev}:before`, cmp, opts);
 
     // Check for valid hoverable
-    if (!model.get('hoverable')) {
+    if (!cmp.get('hoverable')) {
       if (opts.useValid && !opts.abort) {
-        let parent = model.parent();
+        let parent = cmp.parent();
         while (parent && !parent.get('hoverable')) parent = parent.parent();
-        model = parent;
+        cmp = parent;
       } else {
         return;
       }
     }
 
     if (!opts.abort) {
-      upHovered(model, opts);
-      this.trigger(ev, model, opts);
+      upHovered(cmp, opts);
+      this.trigger(ev, cmp, opts);
     }
   }
 
@@ -975,7 +969,7 @@ export default class EditorModel extends Model {
   }
 
   clearDirtyCount() {
-    return this.set('changesCount', 0);
+    return this.set({ changesCount: 0 }, { isClear: true });
   }
 
   getZoomDecimal() {
